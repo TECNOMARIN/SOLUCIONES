@@ -1,0 +1,23 @@
+{
+  "name": "soluciones-efectivas-ctg",
+  "version": "1.0.0",
+  "description": "Soluciones Efectivas CTG | Portal Maestro",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "start": "node server.js",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^6.0.5",
+    "express": "^4.19.2",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "vite": "^8.2.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "tailwindcss": "^4.3.3"
+  }
+}

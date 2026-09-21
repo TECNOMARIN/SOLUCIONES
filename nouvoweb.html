@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Soluciones CTG | OTG Setup</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800;900&display=swap');
+
+        :root {
+            --primary-gradient: linear-gradient(135deg, #1e3a6d 0%, #2C4C8C 100%);
+            --action-gradient: linear-gradient(135deg, #74c456 0%, #58a33f 100%);
+            --brand-blue: #2C4C8C;
+            --brand-green: #67B74D;
+        }
+
+        body { 
+            background: var(--primary-gradient); 
+            min-height: 100vh; 
+            font-family: 'Montserrat', sans-serif;
+            -webkit-font-smoothing: antialiased;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .app-card {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.4);
+        }
+
+        .btn-install {
+            background: var(--action-gradient);
+            box-shadow: 0 6px 15px rgba(103, 183, 77, 0.3);
+            transition: all 0.2s ease;
+        }
+
+        .btn-install:disabled {
+            background: #94a3b8;
+            box-shadow: none;
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .console-mini {
+            background: #0f172a;
+            font-family: 'Courier New', monospace;
+            font-size: 10px;
+            border: 1px solid rgba(255,255,255,0.05);
+            word-wrap: break-word;
+        }
+
+        .step-bubble {
+            background: #f8fafc;
+            border: 1px solid #f1f5f9;
+            border-radius: 10px;
+            padding: 8px 12px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        ::-webkit-scrollbar { display: none; }
+    </style>
+</head>
+<body class="p-3">
+
+    <div class="app-card w-full max-w-sm flex flex-col">
+        <!-- Cabecera -->
+        <div class="bg-white px-5 py-3 flex items-center justify-between border-b border-slate-100 rounded-t-[20px]">
+            <img src="https://raw.githubusercontent.com/TECNOMARIN/MULTIMARCAS/refs/heads/main/SOLUCIONES%20PNG.png" alt="Logo" class="h-8 w-auto">
+            <div class="flex items-center gap-2">
+                <div id="status-dot" class="w-2 h-2 rounded-full bg-slate-300"></div>
+                <span id="status-text" class="text-[8px] font-black text-slate-400 uppercase tracking-widest">Wait USB</span>
+            </div>
+        </div>
+
+        <div class="p-4 space-y-4">
+            <!-- Info OTG -->
+            <div class="bg-blue-50 px-3 py-2 rounded-lg border border-blue-100 flex items-center gap-3">
+                <i class="fas fa-mobile-nodes text-blue-500 text-[10px]"></i>
+                <span class="text-[8px] font-extrabold text-blue-700 uppercase tracking-tighter text-center w-full">Soporte OTG Celular-a-Celular</span>
+            </div>
+
+            <!-- Pasos Previos -->
+            <div class="grid grid-cols-1 gap-1.5">
+                <div class="step-bubble">
+                    <i class="fas fa-check-circle text-emerald-500 text-[10px]"></i>
+                    <p class="text-[9px] font-bold text-slate-500 uppercase">Sin cuentas Google</p>
+                </div>
+                <div class="step-bubble">
+                    <i class="fas fa-check-circle text-emerald-500 text-[10px]"></i>
+                    <p class="text-[9px] font-bold text-slate-500 uppercase">Depuración USB activa</p>
+                </div>
+            </div>
+
+            <!-- Botón de Acción -->
+            <button id="btn-start" disabled class="btn-install w-full py-4 rounded-xl text-white font-black text-xs flex items-center justify-center gap-3 active:scale-95 transition-all">
+                <i class="fas fa-bolt-lightning"></i>
+                VINCULAR Y CONFIGURAR
+            </button>
+
+            <!-- Monitor de Procesos -->
+            <div class="space-y-2">
+                <div class="flex justify-between items-center px-1">
+                    <span class="text-[8px] font-black text-slate-400 uppercase tracking-widest italic tracking-tighter">Status Terminal</span>
+                    <span id="progress-percent" class="text-[10px] font-black text-emerald-600">0%</span>
+                </div>
+                <div class="w-full h-1 bg-slate-100 rounded-full overflow-hidden">
+                    <div id="progress-bar" class="w-0 h-full bg-emerald-500 transition-all duration-500 shadow-[0_0_5px_rgba(16,185,129,0.5)]"></div>
+                </div>
+                <div id="console" class="console-mini w-full h-32 p-3 rounded-xl overflow-y-auto leading-tight text-slate-500">
+                    <div id="lib-status"># INICIALIZANDO_SISTEMA...</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-slate-50 py-2 text-center border-t border-slate-100 rounded-b-[20px]">
+            <p class="text-[7px] font-black text-slate-300 uppercase tracking-[0.3em]">
+                TECNOMARIN & SOLUCIONES CTG 2024
+            </p>
+        </div>
+    </div>
+
+    <!-- NÚCLEO ADB NATIVO INTEGRADO (Cero dependencias de red) -->
+    <script>
+        // Utilidades de Consola y Progreso
+        const consoleEl = document.getElementById('console');
+        const btnStart = document.getElementById('btn-start');
+        const statusDot = document.getElementById('status-dot');
+        const statusText = document.getElementById('status-text');
+        const progressBar = document.getElementById('progress-bar');
+        const progressPercent = document.getElementById('progress-percent');
+        const libStatus = document.getElementById('lib-status');
+
+        const APK_URL = 'https://github.com/TECNOMARIN/MULTIMARCAS/raw/refs/heads/main/nuovopay.apk';
+
+        function log(msg, type = 'info') {
+            const colors = { info: 'text-slate-500', success: 'text-emerald-400 font-bold', error: 'text-red-400', process: 'text-blue-400', warning: 'text-yellow-400 font-bold' };
+            const div = document.createElement('div');
+            div.className = `mb-0.5 ${colors[type]}`;
+            div.innerHTML = `<span class="opacity-30">></span> ${msg}`;
+            consoleEl.appendChild(div);
+            consoleEl.scrollTop = consoleEl.scrollHeight;
+        }
+
+        function updateProgress(p) {
+            progressBar.style.width = p + '%';
+            progressPercent.innerText = Math.round(p) + '%';
+        }
+
+        // --- MOTOR ROBUST ADB NATIVO ---
+        class AdbStream {
+            constructor(transport, localId) {
+                this.transport = transport;
+                this.localId = localId;
+                this.remoteId = 0;
+                this.onData = null;
+                this.onClose = null;
+                this._ready = new Promise(resolve => { this._resolveReady = resolve; });
+            }
+
+            async write(data) {
+                await this._ready;
+                // Esperamos la confirmación del equipo para no desbordar su memoria
+                this._awaitingOkay = new Promise(resolve => { this._resolveOkay = resolve; });
+                await this.transport.write("WRTE", this.localId, this.remoteId, data);
+                await this._awaitingOkay; 
+            }
+
+            notifyOkay(remoteId) {
+                if (this.remoteId === 0) {
+                    this.remoteId = remoteId;
+                    this._resolveReady();
+                } else if (this._resolveOkay) {
+                    this._resolveOkay();
+                }
+            }
+
+            closeLocally() {
+                if (this.onClose) this.onClose();
+            }
+
+            async close() {
+                await this.transport.write("CLSE", this.localId, this.remoteId, new Uint8Array(0));
+                this.closeLocally();
+            }
+        }
+
+        class RobustAdb {
+            constructor() {
+                this.transport = null;
+                this.streams = new Map();
+                this.localId = 1;
+            }
+
+            async connect(device) {
+                await device.open();
+                
+                // Novedad: Forzar reseteo del puerto USB para evitar el error 'transferIn' si quedó bloqueado
+                try { 
+                    log("Reseteando interfaz USB (Anti-Stall)...", "process");
+                    await device.reset(); 
+                } catch(e) { 
+                    console.warn("Reset omitido:", e); 
+                }
+
+                await device.selectConfiguration(1);
+                
+                const iface = device.configuration.interfaces.find(i => 
+                    i.alternates.some(a => a.interfaceClass === 255 && a.interfaceSubclass === 66 && a.interfaceProtocol === 1)
+                );
+                if (!iface) throw new Error("Interfaz ADB no encontrada en el dispositivo.");
+                
+                await device.claimInterface(iface.interfaceNumber);
+                const alt = iface.alternates[0];
+                const inEp = alt.endpoints.find(e => e.direction === 'in').endpointNumber;
+                const outEp = alt.endpoints.find(e => e.direction === 'out').endpointNumber;
+
+                this.transport = {
+                    device, inEp, outEp, maxPayload: 4096,
+                    write: async (cmdStr, arg0, arg1, payload) => {
+                        const buf = new ArrayBuffer(24 + payload.length);
+                        const view = new DataView(buf);
+                        for (let i = 0; i < 4; i++) view.setUint8(i, cmdStr.charCodeAt(i));
+                        view.setUint32(4, arg0, true);
+                        view.setUint32(8, arg1, true);
+                        view.setUint32(12, payload.length, true);
+                        let checksum = 0;
+                        for (let i = 0; i < payload.length; i++) checksum = (checksum + payload[i]) >>> 0;
+                        view.setUint32(16, checksum, true);
+                        view.setUint32(20, (~view.getUint32(0, true)) >>> 0, true);
+                        new Uint8Array(buf, 24).set(payload);
+                        
+                        try {
+                            await device.transferOut(outEp, buf);
+                        } catch(e) {
+                            try { await device.clearHalt("out", outEp); } catch(ex) {}
+                            throw new Error("Fallo escritura USB. Revisa el cable o procesos concurrentes.");
+                        }
+                    },
+                    read: async () => {
+                        let res;
+                        try {
+                            // Control del error transferIn específico
+                            res = await device.transferIn(inEp, 24);
+                        } catch (e) {
+                            // Intento de destrabar el puerto colapsado
+                            try { await device.clearHalt("in", inEp); } catch (ex) {}
+                            throw new Error("Puerto Bloqueado. Desconecta el OTG de ambos lados, ciérralo todo y reintenta.");
+                        }
+
+                        if (res.data.byteLength < 24) return null;
+                        const view = new DataView(res.data.buffer);
+                        const cmdStr = String.fromCharCode(view.getUint8(0), view.getUint8(1), view.getUint8(2), view.getUint8(3));
+                        const arg0 = view.getUint32(4, true);
+                        const arg1 = view.getUint32(8, true);
+                        const len = view.getUint32(12, true);
+                        let payload = new Uint8Array(len);
+                        let rec = 0;
+                        while (rec < len) {
+                            const chunk = await device.transferIn(inEp, len - rec);
+                            payload.set(new Uint8Array(chunk.data.buffer), rec);
+                            rec += chunk.data.byteLength;
+                        }
+                        return { command: cmdStr, arg0, arg1, payload };
+                    }
+                };
+
+                // Enviamos el saludo "host::" necesario en Android modernos
+                const payloadStr = "host::\0";
+                const payload = new TextEncoder().encode(payloadStr);
+                await this.transport.write("CNXN", 0x01000001, 4096, payload);
+                
+                const response = await this.transport.read();
+                if (!response) throw new Error("Sin respuesta del dispositivo.");
+                
+                // Androids con seguridad RSA envían 'AUTH'
+                if (response.command === "AUTH") {
+                    throw new Error("¡Equipo requiere autorización! Acepta la huella en la pantalla del celular destino y reconecta.");
+                }
+
+                if (response.command !== "CNXN") throw new Error("Handshake rechazado. Estado: " + response.command);
+                
+                this.transport.maxPayload = response.arg1;
+                this._receiveLoop(); // Iniciar hilo de lectura en segundo plano
+            }
+
+            async _receiveLoop() {
+                try {
+                    while (true) {
+                        const packet = await this.transport.read();
+                        if (!packet) break;
+
+                        const stream = this.streams.get(packet.arg1);
+                        if (packet.command === "CLSE") {
+                            if (stream) {
+                                stream.closeLocally();
+                                this.streams.delete(packet.arg1);
+                            }
+                        } else if (packet.command === "WRTE") {
+                            if (stream && stream.onData) stream.onData(packet.payload);
+                            await this.transport.write("OKAY", packet.arg1, packet.arg0, new Uint8Array(0));
+                        } else if (packet.command === "OKAY") {
+                            if (stream) stream.notifyOkay(packet.arg0);
+                        }
+                    }
+                } catch (err) {
+                    console.log("Hilo de lectura cerrado:", err.message);
+                }
+            }
+
+            async open(destination) {
+                const localId = this.localId++;
+                const stream = new AdbStream(this.transport, localId);
+                this.streams.set(localId, stream);
+                
+                const destBytes = new TextEncoder().encode(destination + "\0");
+                await this.transport.write("OPEN", localId, 0, destBytes);
+                await stream._ready;
+                return stream;
+            }
+
+            async shell(command) {
+                const stream = await this.open("shell:" + command);
+                let chunks = [];
+                let finished = false;
+                
+                stream.onData = (d) => chunks.push(d);
+                stream.onClose = () => { finished = true; };
+
+                return new Promise(resolve => {
+                    const check = setInterval(() => {
+                        if (finished) {
+                            clearInterval(check);
+                            const len = chunks.reduce((acc, c) => acc + c.length, 0);
+                            const merged = new Uint8Array(len);
+                            let offset = 0;
+                            for (let c of chunks) {
+                                merged.set(c, offset);
+                                offset += c.length;
+                            }
+                            resolve(new TextDecoder().decode(merged));
+                        }
+                    }, 100);
+                });
+            }
+
+            async install(apkBuffer) {
+                const stream = await this.open("exec:cmd package install -S " + apkBuffer.byteLength);
+                const data = new Uint8Array(apkBuffer);
+                const chunkSize = Math.min(this.transport.maxPayload, 4096);
+                
+                // Enviar la APK por bloques y actualizar progreso real
+                for (let i = 0; i < data.length; i += chunkSize) {
+                    await stream.write(data.subarray(i, i + chunkSize));
+                    let simulatedProgress = 60 + ((i / data.length) * 25);
+                    updateProgress(simulatedProgress); // Sube del 60% al 85% durante la transferencia
+                }
+
+                let responseText = "";
+                let finished = false;
+                stream.onData = (d) => { responseText += new TextDecoder().decode(d); };
+                stream.onClose = () => { finished = true; };
+
+                await new Promise(resolve => {
+                    const check = setInterval(() => {
+                        if (finished || responseText.includes("Success")) {
+                            clearInterval(check);
+                            resolve();
+                        }
+                    }, 100);
+                });
+
+                if (!responseText.includes("Success")) {
+                    throw new Error("Sistema denegó la APK: " + responseText.substring(0, 50));
+                }
+            }
+        }
+
+        // --- FLUJO PRINCIPAL ---
+        window.onload = () => {
+            log("Verificando compatibilidad del sistema...", "info");
+            
+            if (!navigator.usb) {
+                libStatus.innerHTML = "# ERROR: USB_NOT_SUPPORTED";
+                libStatus.className = "text-red-500 font-bold";
+                log("Navegador incompatible. Usa Chrome en Android o PC bajo HTTPS.", "error");
+            } else {
+                libStatus.innerHTML = "# CORE_SISTEMA_LISTO";
+                libStatus.className = "text-emerald-500 font-bold";
+                btnStart.disabled = false;
+                log("Motor ADB Nativo cargado y listo en memoria.", "success");
+            }
+        };
+
+        btnStart.onclick = async () => {
+            btnStart.disabled = true;
+            updateProgress(5);
+            log("Iniciando Handshake USB...", "process");
+
+            try {
+                log("Esperando selección de equipo en pantalla...", "info");
+                
+                // Petición de dispositivo USB
+                const webusb = await navigator.usb.requestDevice({ 
+                    filters: [{ classCode: 255, subclassCode: 66, protocolCode: 1 }] 
+                });
+                
+                if (!webusb) {
+                    log("Vínculo cancelado.", "error");
+                    btnStart.disabled = false;
+                    updateProgress(0);
+                    return;
+                }
+
+                log("Conectando al terminal...", "process");
+                const adb = new RobustAdb();
+                await adb.connect(webusb);
+                
+                updateProgress(35);
+
+                statusDot.className = "w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]";
+                statusText.innerText = "ONLINE";
+                statusText.classList.replace('text-slate-400', 'text-emerald-600');
+                
+                log("CONEXIÓN ADB ESTABLECIDA.", "success");
+
+                log("Descargando paquete MULTIMARCAS...", "info");
+                // Asegurarse de que el CORS de GitHub no bloquee la descarga
+                const response = await fetch(APK_URL);
+                if (!response.ok) throw new Error("Error de red al descargar la APK.");
+                const apkBlob = await response.blob();
+                const apkBuffer = await apkBlob.arrayBuffer();
+                updateProgress(60);
+
+                log("Inyectando instalador en el dispositivo...", "process");
+                await adb.install(apkBuffer);
+                updateProgress(85);
+                log("APK INSTALADA CORRECTAMENTE.", "success");
+
+                log("Configurando Device Owner...", "process");
+                const result = await adb.shell("dpm set-device-owner com.promobitech.nuovo/com.promobitech.mobilock.component.MobilockDeviceAdmin");
+                updateProgress(95);
+                
+                if (result.includes("Success")) {
+                    log("ADMINISTRADOR ACTIVADO.", "success");
+                } else if (result.trim().length > 0) {
+                    log("RESPUESTA SISTEMA: " + (result.substring(0,40)), "info");
+                    if (result.includes("already some accounts")) {
+                        log("ERROR: EL EQUIPO AÚN TIENE CUENTAS.", "error");
+                        throw new Error("El dispositivo tiene cuentas configuradas.");
+                    }
+                }
+
+                log("Finalizando ajustes de optimización...", "info");
+                await adb.shell("settings put global verifier_verify_adb_installs 0");
+                await adb.shell("dumpsys deviceidle whitelist +com.promobitech.nuovo");
+                await adb.shell("am start com.promobitech.nuovo/com.promobitech.mobilock.ui.activities.NavigationActivity");
+
+                updateProgress(100);
+                log("CONFIGURACIÓN COMPLETADA Y EXITOSA.", "success");
+
+            } catch (err) {
+                log("FALLO: " + err.message, "error");
+                statusDot.className = "w-2 h-2 rounded-full bg-red-500";
+                statusText.innerText = "ERROR";
+                btnStart.disabled = false;
+            }
+        };
+    </script>
+</body>
+</html>
