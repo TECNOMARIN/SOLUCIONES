@@ -14344,7 +14344,7 @@ return Component ? <Component {...props} /> : null;
             const [db, setDb] = useState({ clientes: [], financieras: [], cuotas: [], porcentajes: [], simulaciones: [], roles: [], roles_permisos: [], bancos: [], cuentas_tesoreria: [], config_permisos: [], notificacion: null });
             const [distribuidorPrices, setDistribuidorPrices] = useState([]);
             
-            const [activeView, setActiveView] = useState('sim'); 
+            const [activeView, setActiveView] = useState('tablero'); 
             const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
             
             const [loading, setLoading] = useState(false);
@@ -14428,6 +14428,7 @@ return Component ? <Component {...props} /> : null;
                 }
 
                 const canAccessModule = (modId) => {
+                    if (modId === 'tablero' || modId === 'consultapayjoy') return true;
                     if (isGlobalAdmin) return true;
                     return Boolean(modulosPermitidos[modId]);
                 };
@@ -14545,7 +14546,7 @@ return Component ? <Component {...props} /> : null;
                     setCurrentUser(f);
                     setupPermissions(f, db.config_permisos);
                     sessionStorage.setItem('soluciones_user_session_v4', JSON.stringify(f));
-                    setActiveView('sim');
+                    setActiveView('tablero');
                     fetchData(); // Trigger full data load now
                 } else {
                     showToast("Credenciales incorrectas o usuario no existe.", "error");
@@ -14557,7 +14558,7 @@ return Component ? <Component {...props} /> : null;
                 setCurrentUser(null);
                 setUserPerms({ isGlobalAdmin: false, isRegionalAdmin: false, isSemiAdmin: false, isTesoreria: false, hasPrivileges: false, un: '' });
                 sessionStorage.removeItem('soluciones_user_session_v4');
-                setActiveView('sim');
+                setActiveView('tablero');
             };
 
             const apiCall = async (action, data, successMsg) => {
@@ -14730,34 +14731,9 @@ return Component ? <Component {...props} /> : null;
                         </div>
 
                         <div className="flex flex-col flex-1 overflow-y-auto custom-scrollbar p-3 space-y-1.5 mt-2 pb-20">
-                            {!isSidebarCollapsed && <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-3 mb-1 mt-2">Principal</p>}
-                            <NavItem id="sim" icon="Calculator" label="Calculadora" hidden={userPerms.canAccessModule && !userPerms.canAccessModule('sim')} />
-                            <NavItem id="ext" icon="Smartphone" label="Crédito en Línea" hidden={userPerms.canAccessModule && !userPerms.canAccessModule('ext')} />
-                            <NavItem id="agenda" icon="Calendar" label="Agenda y Visitas" hidden={userPerms.canAccessModule ? !userPerms.canAccessModule('agenda') : false} />
-
-                            {userPerms.hasPrivileges && (
-                                <>
-                                    {!isSidebarCollapsed && <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-3 mb-1 mt-4">Gestión y Caja</p>}
-                                    <NavItem id="sol" icon="ClipboardList" label="Solicitudes" hidden={userPerms.canAccessModule ? !userPerms.canAccessModule('sol') : !userPerms.hasPrivileges} />
-                                    <NavItem id="tablero" icon="BarChart2" label="Tablero Cartera" hidden={userPerms.canAccessModule ? !userPerms.canAccessModule('tablero') : !userPerms.hasPrivileges} />
-                                    <NavItem id="consultapayjoy" icon="Search" label="Consulta PayJoy" hidden={userPerms.canAccessModule ? !userPerms.canAccessModule('consultapayjoy') : !userPerms.hasPrivileges} />
-                                    <NavItem id="liq" icon="FileText" label="Liquidaciones" hidden={userPerms.canAccessModule ? !userPerms.canAccessModule('liq') : !userPerms.hasPrivileges} />
-                                    <NavItem id="retailb" icon="Store" label="Retail B" hidden={userPerms.canAccessModule ? !userPerms.canAccessModule('retailb') : !userPerms.hasPrivileges} />
-                                    <NavItem id="dash" icon="Globe" label="Panel de Rendimiento" hidden={userPerms.canAccessModule ? !userPerms.canAccessModule('dash') : !userPerms.hasPrivileges} />
-                                    <NavItem id="prestamos" icon="Handshake" label="Gestión de Préstamos" hidden={userPerms.canAccessModule ? !userPerms.canAccessModule('prestamos') : !userPerms.hasPrivileges} />
-                                    <NavItem id="tes" icon="Landmark" label="Tesorería" hidden={userPerms.canAccessModule ? !userPerms.canAccessModule('tes') : !(userPerms.isGlobalAdmin || userPerms.isRegionalAdmin || userPerms.isTesoreria)} />
-                                </>
-                            )}
-
-                            {(userPerms.hasPrivileges) && (
-                                <>
-                                    {!isSidebarCollapsed && <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-3 mb-1 mt-4">Administración</p>}
-                                    <NavItem id="consola" icon="Database" label="Consola" hidden={userPerms.canAccessModule ? !userPerms.canAccessModule('consola') : !userPerms.hasPrivileges} />
-                                    <NavItem id="con" icon="FileText" label="Consultas" hidden={userPerms.canAccessModule ? !userPerms.canAccessModule('con') : !(userPerms.isGlobalAdmin || userPerms.isRegionalAdmin || userPerms.isTesoreria)} />
-                                    <NavItem id="adm" icon="Settings" label="Configuración" hidden={userPerms.canAccessModule ? !userPerms.canAccessModule('adm') : !userPerms.hasPrivileges} />
-                                    <NavItem id="seguridad" icon="ShieldCheck" label="Seguridad" hidden={userPerms.canAccessModule ? !userPerms.canAccessModule('seguridad') : !userPerms.hasPrivileges} />
-                                </>
-                            )}
+                            {!isSidebarCollapsed && <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-3 mb-1 mt-2">Módulos</p>}
+                            <NavItem id="tablero" icon="BarChart2" label="Tablero Cartera" />
+                            <NavItem id="consultapayjoy" icon="Search" label="Consulta PayJoy" />
                         </div>
 
                         <div className="p-3 border-t border-slate-200 bg-white shrink-0">
@@ -14768,25 +14744,14 @@ return Component ? <Component {...props} /> : null;
                         </div>
                     </div>
 
-                    <div className="md:hidden bg-white border-t border-slate-200 flex overflow-x-auto custom-scrollbar p-2 gap-2 shrink-0 z-20">
-                        <button onClick={() => setActiveView('sim')} className={`flex-1 min-w-[100px] flex flex-col items-center justify-center p-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${activeView === 'sim' ? 'bg-[#2C4C8C] text-white shadow-md' : 'text-slate-500 hover:bg-slate-100'}`}><Icon name="Calculator" size={18} className="mb-1"/> Simulador</button>
-                        <button onClick={() => setActiveView('ext')} className={`flex-1 min-w-[100px] flex flex-col items-center justify-center p-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${activeView === 'ext' ? 'bg-[#2C4C8C] text-white shadow-md' : 'text-slate-500 hover:bg-slate-100'}`}><Icon name="Smartphone" size={18} className="mb-1"/> Créditos</button>
-                        {(!userPerms.canAccessModule || userPerms.canAccessModule('agenda')) && <button onClick={() => setActiveView('agenda')} className={`flex-1 min-w-[100px] flex flex-col items-center justify-center p-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${activeView === 'agenda' ? 'bg-[#2C4C8C] text-white shadow-md' : 'text-slate-500 hover:bg-slate-100'}`}><Icon name="Calendar" size={18} className="mb-1"/> Agenda</button>}
-                        {userPerms.canAccessModule && userPerms.canAccessModule('sol') && <button onClick={() => setActiveView('sol')} className={`flex-1 min-w-[100px] flex flex-col items-center justify-center p-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${activeView === 'sol' ? 'bg-[#2C4C8C] text-white shadow-md' : 'text-slate-500 hover:bg-slate-100'}`}><Icon name="ClipboardList" size={18} className="mb-1"/> Solicitudes</button>}
-                        {userPerms.canAccessModule && userPerms.canAccessModule('tablero') && <button onClick={() => setActiveView('tablero')} className={`flex-1 min-w-[100px] flex flex-col items-center justify-center p-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${activeView === 'tablero' ? 'bg-[#2C4C8C] text-white shadow-md' : 'text-slate-500 hover:bg-slate-100'}`}><Icon name="BarChart2" size={18} className="mb-1"/> Tablero</button>}
-                        {userPerms.canAccessModule && userPerms.canAccessModule('consultapayjoy') && <button onClick={() => setActiveView('consultapayjoy')} className={`flex-1 min-w-[100px] flex flex-col items-center justify-center p-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${activeView === 'consultapayjoy' ? 'bg-[#2C4C8C] text-white shadow-md' : 'text-slate-500 hover:bg-slate-100'}`}><Icon name="Search" size={18} className="mb-1"/> PayJoy</button>}
-                        {userPerms.canAccessModule && userPerms.canAccessModule('liq') && <button onClick={() => setActiveView('liq')} className={`flex-1 min-w-[100px] flex flex-col items-center justify-center p-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${activeView === 'liq' ? 'bg-[#2C4C8C] text-white shadow-md' : 'text-slate-500 hover:bg-slate-100'}`}><Icon name="FileText" size={18} className="mb-1"/> Liq.</button>}
-                        {userPerms.canAccessModule && userPerms.canAccessModule('retailb') && <button onClick={() => setActiveView('retailb')} className={`flex-1 min-w-[100px] flex flex-col items-center justify-center p-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${activeView === 'retailb' ? 'bg-[#2C4C8C] text-white shadow-md' : 'text-slate-500 hover:bg-slate-100'}`}><Icon name="Store" size={18} className="mb-1"/> Retail B</button>}
-                        {userPerms.canAccessModule && userPerms.canAccessModule('prestamos') && <button onClick={() => setActiveView('prestamos')} className={`flex-1 min-w-[100px] flex flex-col items-center justify-center p-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${activeView === 'prestamos' ? 'bg-[#2C4C8C] text-white shadow-md' : 'text-slate-500 hover:bg-slate-100'}`}><Icon name="Handshake" size={18} className="mb-1"/> Préstamos</button>}
-                        {userPerms.canAccessModule && userPerms.canAccessModule('consola') && <button onClick={() => setActiveView('consola')} className={`flex-1 min-w-[100px] flex flex-col items-center justify-center p-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${activeView === 'consola' ? 'bg-[#2C4C8C] text-white shadow-md' : 'text-slate-500 hover:bg-slate-100'}`}><Icon name="Database" size={18} className="mb-1"/> Consola</button>}
-                        {userPerms.canAccessModule && userPerms.canAccessModule('tes') && <button onClick={() => setActiveView('tes')} className={`flex-1 min-w-[100px] flex flex-col items-center justify-center p-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${activeView === 'tes' ? 'bg-[#2C4C8C] text-white shadow-md' : 'text-slate-500 hover:bg-slate-100'}`}><Icon name="Landmark" size={18} className="mb-1"/> Caja</button>}
-                        {userPerms.canAccessModule && userPerms.canAccessModule('adm') && <button onClick={() => setActiveView('adm')} className={`flex-1 min-w-[100px] flex flex-col items-center justify-center p-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${activeView === 'adm' ? 'bg-[#2C4C8C] text-white shadow-md' : 'text-slate-500 hover:bg-slate-100'}`}><Icon name="Settings" size={18} className="mb-1"/> Config</button>}
-                        {userPerms.hasPrivileges && <button onClick={() => setActiveView('seguridad')} className={`flex-1 min-w-[100px] flex flex-col items-center justify-center p-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${activeView === 'seguridad' ? 'bg-[#2C4C8C] text-white shadow-md' : 'text-slate-500 hover:bg-slate-100'}`}><Icon name="ShieldCheck" size={18} className="mb-1"/> Seguridad</button>}
-                        <button onClick={handleLogout} className="flex-1 min-w-[100px] flex flex-col items-center justify-center p-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all text-rose-500 hover:bg-rose-50"><Icon name="LogOut" size={18} className="mb-1"/> Salir</button>
+                    <div className="md:hidden bg-white border-t border-slate-200 flex justify-around p-2 gap-2 shrink-0 z-20">
+                        <button onClick={() => setActiveView('tablero')} className={"flex-1 min-w-[90px] flex flex-col items-center justify-center p-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all " + (activeView === 'tablero' ? "bg-[#2C4C8C] text-white shadow-md" : "text-slate-500 hover:bg-slate-100")}><Icon name="BarChart2" size={18} className="mb-1"/> Tablero</button>
+                        <button onClick={() => setActiveView('consultapayjoy')} className={"flex-1 min-w-[90px] flex flex-col items-center justify-center p-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all " + (activeView === 'consultapayjoy' ? "bg-[#2C4C8C] text-white shadow-md" : "text-slate-500 hover:bg-slate-100")}><Icon name="Search" size={18} className="mb-1"/> PayJoy</button>
+                        <button onClick={handleLogout} className="flex-1 min-w-[90px] flex flex-col items-center justify-center p-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all text-rose-500 hover:bg-rose-50"><Icon name="LogOut" size={18} className="mb-1"/> Salir</button>
                     </div>
 
                     <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50/50 relative">
-                        {db.notificacion && db.notificacion.activo && db.notificacion.mensaje && activeView === 'sim' && (
+                        {db.notificacion && db.notificacion.activo && db.notificacion.mensaje && (activeView === 'tablero' || activeView === 'consultapayjoy') && (
                             <div className={`px-6 py-4 border-b flex items-start gap-3 ${db.notificacion.tipo === 'urgente' ? 'bg-rose-50 border-rose-200 text-rose-800' : 'bg-blue-50 border-blue-200 text-blue-800'} shrink-0 z-10`}>
                                 <Icon name="AlertTriangle" size={20} className="shrink-0 mt-0.5" />
                                 <div>
@@ -14797,21 +14762,11 @@ return Component ? <Component {...props} /> : null;
                         )}
 
                         <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-8 relative">
-                            {activeView === 'agenda' && userPerms.canAccessModule && userPerms.canAccessModule('agenda') && <AgendaVisitasView db={db} currentUser={currentUser} userPerms={userPerms} apiCall={apiCall} showToast={showToast} setActiveView={setActiveView} />}
-                            {activeView === 'sim' && <CalculatorView db={db} currentUser={currentUser} userPerms={userPerms} apiCall={apiCall} showToast={showToast} />}
-                            {activeView === 'ext' && <OnlineCreditView onOpenQr={(url, title) => setQrModal({show: true, url, title})} loadDistribuidorPrices={loadDistribuidorPrices} currentUser={currentUser} showToast={showToast} />}
-                            {activeView === 'sol' && userPerms.canAccessModule && userPerms.canAccessModule('sol') && <SolicitudesView showToast={showToast} />}
-                            {activeView === 'tablero' && userPerms.canAccessModule && userPerms.canAccessModule('tablero') && <TableroView showToast={showToast} currentUser={currentUser} userPerms={userPerms} setActiveView={setActiveView} />}
-                            {activeView === 'consultapayjoy' && userPerms.canAccessModule && userPerms.canAccessModule('consultapayjoy') && <ConsultaPayJoyView />}
-                            {activeView === 'liq' && userPerms.hasPrivileges && <LiquidacionesView showToast={showToast} currentUser={currentUser} userPerms={userPerms} setActiveView={setActiveView} />}
-                            {activeView === 'retailb' && userPerms.canAccessModule && userPerms.canAccessModule('retailb') && <RetailBView showToast={showToast} currentUser={currentUser} userPerms={userPerms} setActiveView={setActiveView} />}
-                            {activeView === 'consola' && userPerms.hasPrivileges && <ConsolaView db={db} setDb={setDb} apiCall={apiCall} showToast={showToast} />}
-                            {activeView === 'dash' && userPerms.canAccessModule && userPerms.canAccessModule('dash') && <DashboardView db={db} userPerms={userPerms} />}
-                            {activeView === 'prestamos' && userPerms.canAccessModule && userPerms.canAccessModule('prestamos') && <PrestamosView db={db} userPerms={userPerms} showToast={showToast} apiCall={apiCall} currentUser={currentUser} />}
-                            {activeView === 'adm' && userPerms.canAccessModule && userPerms.canAccessModule('adm') && <AdminView db={db} apiCall={apiCall} showToast={showToast} userPerms={userPerms} />}
-                            {activeView === 'con' && userPerms.canAccessModule && userPerms.canAccessModule('con') && <QueriesView db={db} userPerms={userPerms} apiCall={apiCall} showToast={showToast} />}
-                            {activeView === 'tes' && userPerms.canAccessModule && userPerms.canAccessModule('tes') && <TesoreriaView db={db} apiCall={apiCall} showToast={showToast} userPerms={userPerms} />}
-                            {activeView === 'seguridad' && userPerms.canAccessModule && userPerms.canAccessModule('seguridad') && <SecurityView db={db} setDb={setDb} apiCall={apiCall} showToast={showToast} userPerms={userPerms} />}
+                            {activeView === 'consultapayjoy' ? (
+                                <ConsultaPayJoyView />
+                            ) : (
+                                <TableroView showToast={showToast} currentUser={currentUser} userPerms={userPerms} setActiveView={setActiveView} />
+                            )}
                         </div>
                     </div>
 
