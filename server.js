@@ -8,6 +8,7 @@ const __dirname = path.dirname(__filename);
 
 
 import https from 'https';
+import { lookupPayjoyCustomer } from './payjoy-service.js';
 
 // Background sync for users
 let cachedUsers = null;
@@ -47,6 +48,16 @@ setInterval(fetchUsersBackground, 10 * 60 * 1000);
 
 
 const app = express();
+
+app.get("/api/payjoy/lookup", async (req, res) => {
+  try {
+    const tag = req.query.tag;
+    const result = await lookupPayjoyCustomer(tag);
+    res.json(result);
+  } catch(e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
 const PORT = 3000;
 
 app.use((req, res, next) => {

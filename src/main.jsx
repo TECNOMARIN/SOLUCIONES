@@ -1503,13 +1503,419 @@ import './index.css';
             );
         };
 
+        const getRowTag = (row) => {
+            if (!row || typeof row !== 'object') return '';
+            const tagKeywords = [
+                'tag', 'codigo_venta', 'codigo venta', 'código venta', 'código_venta',
+                'cod_venta', 'cod venta', 'codigo del dispositivo', 'codigo dispositivo',
+                'código del dispositivo', 'codigodispositivo', 'codigodeldispositivo',
+                'id_simulacion', 'id simulacion', 'simulacion', 'codigo', 'código'
+            ];
+            for (const k of Object.keys(row)) {
+                const cleanK = String(k).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+                if (tagKeywords.some(kw => cleanK === kw || cleanK.includes(kw))) {
+                    const val = String(row[k] || '').trim().toUpperCase();
+                    if (val && !val.includes(' ') && val.length >= 4 && val.length <= 15) {
+                        return val;
+                    }
+                }
+            }
+            for (const val of Object.values(row)) {
+                const str = String(val || '').trim().toUpperCase();
+                if (/^[A-Z0-9]{6,8}$/.test(str) && !/^\d+$/.test(str)) {
+                    return str;
+                }
+            }
+            return '';
+        };
+
+        const PayJoyPaymentModal = ({ isOpen, onClose, initialTag = '', clientName = '', onSyncToBoard = null, showToast = null }) => {
+            const [currentTag, setCurrentTag] = useState('');
+            const [loading, setLoading] = useState(false);
+            const [liveData, setLiveData] = useState(null);
+            const [error, setError] = useState(null);
+            const [copied, setCopied] = useState(false);
+            const [synced, setSynced] = useState(false);
+            const [iframeLoaded, setIframeLoaded] = useState(false);
+            const [fullScreenIframe, setFullScreenIframe] = useState(false);
+
+            useEffect(() => {
+                if (isOpen) {
+                    const tagToUse = String(initialTag || '').trim().toUpperCase();
+                    setCurrentTag(tagToUse);
+                    setLiveData(null);
+                    setError(null);
+                    setCopied(false);
+                    setSynced(false);
+                    setIframeLoaded(false);
+                    if (tagToUse) {
+                        fetchPayJoyData(tagToUse);
+                    }
+                }
+            }, [isOpen, initialTag]);
+
+            const fetchPayJoyData = async (tagQuery) => {
+                const clean = String(tagQuery || '').trim().toUpperCase();
+                if (!clean) return;
+                setLoading(true);
+                setError(null);
+                setSynced(false);
+
+                try {
+                    // 1. Try local server endpoint first (fast, accurate live calculation)
+                    let data = null;
+                    try {
+                        const res = await fetch(`/api/payjoy/lookup?tag=${encodeURIComponent(clean)}`);
+                        if (res.ok) {
+                            const json = await res.json();
+                            if (json && json.success) {
+                                data = json;
+                            }
+                        }
+                    } catch (err) {}
+
+                    // 2. Fallback to Google Apps Script if local failed
+                    if (!data) {
+                        const sep = API_URL_PAYJOY.includes('?') ? '&' : '?';
+                        const resScript = await fetch(`${API_URL_PAYJOY}${sep}type=actualizar_un_tag&tag=${encodeURIComponent(clean)}`);
+                        if (resScript.ok) {
+                            const jsonScript = await resScript.json();
+                            if (jsonScript && (jsonScript.success || !jsonScript.error)) {
+                                data = jsonScript;
+                            } else if (jsonScript && jsonScript.error) {
+                                throw new Error(jsonScript.error);
+                            }
+                        }
+                    }
+
+                    if (data) {
+                        setLiveData(data);
+                        // Background sheet sync so sheets stays updated
+                        const sep = API_URL_PAYJOY.includes('?') ? '&' : '?';
+                        fetch(`${API_URL_PAYJOY}${sep}type=actualizar_un_tag&tag=${encodeURIComponent(clean)}`).catch(() => {});
+                    } else {
+                        setError('No se pudo obtener información del TAG en PayJoy. Verifica que el código sea correcto.');
+                    }
+                } catch (e) {
+                    setError(e.message || 'Error al conectar con la API de PayJoy.');
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            if (!isOpen) return null;
+
+            const cleanTag = String(currentTag || '').trim().toUpperCase();
+            const paymentUrl = cleanTag ? `https://pay.payjoy.com/p/device/${encodeURIComponent(cleanTag)}` : '';
+
+            const handleCopy = () => {
+                if (!paymentUrl) return;
+                navigator.clipboard.writeText(paymentUrl).then(() => {
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2500);
+                    if (showToast) showToast('¡Enlace de pago PayJoy copiado al portapapeles!', 'success');
+                }).catch(() => {
+                    if (showToast) showToast('No se pudo copiar el enlace', 'error');
+                });
+            };
+
+            const handleOpenTab = () => {
+                if (!paymentUrl) return;
+                window.open(paymentUrl, '_blank', 'noopener,noreferrer');
+            };
+
+            const handleSyncClick = () => {
+                if (!liveData) return;
+                if (onSyncToBoard) {
+                    onSyncToBoard(liveData);
+                    setSynced(true);
+                    setTimeout(() => setSynced(false), 3000);
+                    if (showToast) showToast(`¡Tablero actualizado! TAG: ${liveData.tag} (${liveData.pagas} pagadas, ${liveData.mora} mora)`, 'success');
+                }
+            };
+
+            return (
+                <div className="fixed inset-0 z-[10000] flex items-center justify-center p-2 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200">
+                    <div className={`bg-slate-900 text-slate-100 w-full ${fullScreenIframe ? 'max-w-[98vw] h-[96vh]' : 'max-w-5xl max-h-[92vh]'} rounded-3xl shadow-2xl border border-slate-700/80 overflow-hidden flex flex-col transition-all duration-300`}>
+                        {/* Header */}
+                        <div className="p-4 sm:p-5 border-b border-slate-800 bg-slate-900/95 flex flex-wrap items-center justify-between gap-3 shrink-0">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-emerald-600 to-green-500 flex items-center justify-center text-white shadow-lg shadow-emerald-900/30">
+                                    <Icon name="CreditCard" size={22} />
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="font-black text-white text-base sm:text-lg tracking-tight">Portal de Pagos PayJoy</h3>
+                                        <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                                            En Vivo
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-slate-400">
+                                        {clientName ? `Cliente: ${clientName}` : 'Pasarela oficial de pago & cálculo en vivo'}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Tag input bar */}
+                            <div className="flex items-center gap-2 bg-slate-950/80 p-1.5 rounded-2xl border border-slate-800">
+                                <div className="relative">
+                                    <input
+                                        type="text"
+                                        value={currentTag}
+                                        onChange={(e) => setCurrentTag(e.target.value.toUpperCase())}
+                                        placeholder="TAG / CÓDIGO"
+                                        className="w-36 sm:w-44 text-center font-mono font-black text-sm uppercase tracking-widest bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') fetchPayJoyData(currentTag);
+                                        }}
+                                    />
+                                </div>
+                                <button
+                                    onClick={() => fetchPayJoyData(currentTag)}
+                                    disabled={loading || !currentTag.trim()}
+                                    className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-xl text-xs font-black tracking-wide transition-all flex items-center gap-1.5 shadow-md"
+                                    title="Consultar y calcular en vivo"
+                                >
+                                    {loading ? <Icon name="RefreshCw" size={14} className="animate-spin" /> : <Icon name="Search" size={14} />}
+                                    <span className="hidden sm:inline">Consultar</span>
+                                </button>
+                            </div>
+
+                            {/* Actions bar */}
+                            <div className="flex items-center gap-2">
+                                {onSyncToBoard && (
+                                    <button
+                                        onClick={handleSyncClick}
+                                        disabled={!liveData || loading}
+                                        className={`px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all shadow-md active:scale-95 ${
+                                            synced
+                                                ? 'bg-emerald-500 text-white'
+                                                : 'bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-40 disabled:cursor-not-allowed'
+                                        }`}
+                                        title="Sincronizar cuotas pagadas y mora al tablero en tiempo real"
+                                    >
+                                        <Icon name="RefreshCw" size={14} className={synced ? 'animate-spin' : ''} />
+                                        {synced ? '¡Sincronizado!' : '⚡ Sincronizar'}
+                                    </button>
+                                )}
+
+                                <button
+                                    onClick={handleCopy}
+                                    disabled={!paymentUrl}
+                                    className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 ${
+                                        copied
+                                            ? 'bg-green-950 text-emerald-300 border-emerald-500'
+                                            : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700 disabled:opacity-40'
+                                    }`}
+                                    title="Copiar enlace de pago para compartir por WhatsApp"
+                                >
+                                    <Icon name={copied ? 'CheckCircle' : 'Copy'} size={14} />
+                                    <span className="hidden sm:inline">{copied ? '¡Copiado!' : 'Copiar Link'}</span>
+                                </button>
+
+                                <button
+                                    onClick={handleOpenTab}
+                                    disabled={!paymentUrl}
+                                    className="px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 disabled:opacity-40"
+                                    title="Abrir pasarela oficial en pestaña externa"
+                                >
+                                    <Icon name="Globe" size={14} />
+                                    <span className="hidden sm:inline">Pestaña</span>
+                                </button>
+
+                                <button
+                                    onClick={() => setFullScreenIframe(!fullScreenIframe)}
+                                    className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors"
+                                    title={fullScreenIframe ? 'Restaurar tamaño' : 'Pantalla completa'}
+                                >
+                                    <Icon name={fullScreenIframe ? 'Minimize2' : 'Maximize2'} size={16} />
+                                </button>
+
+                                <button
+                                    onClick={onClose}
+                                    className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors"
+                                    title="Cerrar modal"
+                                >
+                                    <Icon name="X" size={18} />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Live Status Banner */}
+                        <div className="bg-slate-950/90 border-b border-slate-800 px-4 sm:px-6 py-3 shrink-0">
+                            {loading && (
+                                <div className="flex items-center justify-center gap-2 py-3 text-sm font-bold text-blue-400">
+                                    <Icon name="RefreshCw" size={18} className="animate-spin" />
+                                    <span>Consultando API oficial de PayJoy en vivo...</span>
+                                </div>
+                            )}
+
+                            {error && !loading && (
+                                <div className="bg-rose-950/50 border border-rose-800/80 text-rose-300 px-4 py-2.5 rounded-xl text-xs font-bold flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <Icon name="AlertCircle" size={16} className="text-rose-400 shrink-0" />
+                                        <span>{error}</span>
+                                    </div>
+                                    {cleanTag && (
+                                        <button
+                                            onClick={() => fetchPayJoyData(cleanTag)}
+                                            className="underline hover:text-white text-xs font-black ml-2"
+                                        >
+                                            Reintentar
+                                        </button>
+                                    )}
+                                </div>
+                            )}
+
+                            {liveData && !loading && (
+                                <div className="space-y-2">
+                                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-3 text-center">
+                                        {/* Cuotas Pagadas */}
+                                        <div className="bg-slate-900/90 border border-emerald-500/30 rounded-2xl p-2.5 shadow-sm relative overflow-hidden">
+                                            <div className="absolute top-0 left-0 w-full h-1 bg-emerald-500"></div>
+                                            <p className="text-[10px] font-black uppercase tracking-wider text-emerald-400">Cuotas Pagadas</p>
+                                            <p className="text-2xl sm:text-3xl font-black text-white mt-0.5">{liveData.pagas ?? 0}</p>
+                                            <span className="text-[9px] font-bold text-emerald-300/80 block mt-0.5">Reconocidas</span>
+                                        </div>
+
+                                        {/* Cuotas en Mora */}
+                                        <div className={`bg-slate-900/90 border rounded-2xl p-2.5 shadow-sm relative overflow-hidden ${
+                                            (liveData.mora || 0) > 0 ? 'border-rose-500/40' : 'border-slate-800'
+                                        }`}>
+                                            <div className={`absolute top-0 left-0 w-full h-1 ${(liveData.mora || 0) > 0 ? 'bg-rose-500' : 'bg-slate-700'}`}></div>
+                                            <p className={`text-[10px] font-black uppercase tracking-wider ${(liveData.mora || 0) > 0 ? 'text-rose-400' : 'text-slate-400'}`}>
+                                                Cuotas Mora
+                                            </p>
+                                            <p className={`text-2xl sm:text-3xl font-black mt-0.5 ${(liveData.mora || 0) > 0 ? 'text-rose-400' : 'text-slate-300'}`}>
+                                                {liveData.mora ?? 0}
+                                            </p>
+                                            <span className={`text-[9px] font-bold block mt-0.5 ${(liveData.mora || 0) > 0 ? 'text-rose-300' : 'text-slate-500'}`}>
+                                                {(liveData.mora || 0) > 0 ? 'Vencidas' : 'Al día'}
+                                            </span>
+                                        </div>
+
+                                        {/* Próximo Vencimiento */}
+                                        <div className="bg-slate-900/90 border border-blue-500/30 rounded-2xl p-2.5 shadow-sm relative overflow-hidden col-span-2 sm:col-span-1">
+                                            <div className="absolute top-0 left-0 w-full h-1 bg-blue-500"></div>
+                                            <p className="text-[10px] font-black uppercase tracking-wider text-blue-400">Próximo Pago</p>
+                                            <p className="text-xs sm:text-sm font-black text-white mt-1 truncate" title={liveData.fechaProximoPago || 'No registrado'}>
+                                                {liveData.fechaProximoPago || 'No registrado'}
+                                            </p>
+                                            {liveData.diasParaVencer !== null && liveData.diasParaVencer !== undefined ? (
+                                                <span className={`text-[9px] font-black px-2 py-0.5 rounded-full inline-block mt-1 ${
+                                                    liveData.diasParaVencer >= 0
+                                                        ? 'bg-emerald-500/20 text-emerald-300'
+                                                        : 'bg-rose-500/20 text-rose-300'
+                                                }`}>
+                                                    {liveData.diasParaVencer >= 0 ? `Faltan ${liveData.diasParaVencer} d` : `Atraso ${Math.abs(liveData.diasParaVencer)} d`}
+                                                </span>
+                                            ) : (
+                                                <span className="text-[9px] text-slate-500 block mt-1">Calculado en vivo</span>
+                                            )}
+                                        </div>
+
+                                        {/* Saldo Restante */}
+                                        <div className="bg-slate-900/90 border border-indigo-500/30 rounded-2xl p-2.5 shadow-sm relative overflow-hidden">
+                                            <div className="absolute top-0 left-0 w-full h-1 bg-indigo-500"></div>
+                                            <p className="text-[10px] font-black uppercase tracking-wider text-indigo-400">Saldo Restante</p>
+                                            <p className="text-sm sm:text-base font-black text-white mt-1">
+                                                {formatCurrency(liveData.deuda ?? liveData.saldoOriginal ?? 0)}
+                                            </p>
+                                            <span className="text-[9px] text-slate-400 block mt-0.5">Saldo real</span>
+                                        </div>
+
+                                        {/* Cuota Catorcenal */}
+                                        <div className="bg-slate-900/90 border border-violet-500/30 rounded-2xl p-2.5 shadow-sm relative overflow-hidden">
+                                            <div className="absolute top-0 left-0 w-full h-1 bg-violet-500"></div>
+                                            <p className="text-[10px] font-black uppercase tracking-wider text-violet-400">Cuota Catorcenal</p>
+                                            <p className="text-sm sm:text-base font-black text-white mt-1">
+                                                {formatCurrency(liveData.cuotaCatorcenal || (liveData.cuotaSemanal ? liveData.cuotaSemanal * 2 : 0))}
+                                            </p>
+                                            <span className="text-[9px] text-violet-300/80 block mt-0.5">Cada 14 días</span>
+                                        </div>
+                                    </div>
+
+                                    {(liveData.cliente || liveData.device || liveData.imei) && (
+                                        <div className="flex flex-wrap items-center justify-between text-[11px] text-slate-400 bg-slate-900/50 px-3 py-1.5 rounded-xl border border-slate-800">
+                                            <div className="flex items-center gap-3">
+                                                {liveData.cliente && (
+                                                    <span><strong>Titular:</strong> {liveData.cliente}</span>
+                                                )}
+                                                {liveData.device && (
+                                                    <span><strong>Equipo:</strong> {liveData.device}</span>
+                                                )}
+                                            </div>
+                                            {liveData.imei && (
+                                                <span className="font-mono text-slate-500">IMEI: {liveData.imei}</span>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {!liveData && !loading && !error && (
+                                <div className="text-center py-2 text-xs text-slate-400 flex items-center justify-center gap-2">
+                                    <Icon name="HelpCircle" size={16} />
+                                    <span>Ingresa el TAG del crédito arriba para consultar el estado en vivo y cargar la pasarela oficial.</span>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Iframe Viewport */}
+                        <div className="flex-1 bg-slate-950 relative flex flex-col min-h-[460px] overflow-hidden">
+                            {paymentUrl ? (
+                                <>
+                                    <div className="bg-slate-900/80 px-4 py-2 border-b border-slate-800 flex items-center justify-between text-xs text-slate-400 shrink-0">
+                                        <div className="flex items-center gap-2 truncate">
+                                            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                                            <span className="font-mono truncate">{paymentUrl}</span>
+                                        </div>
+                                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider shrink-0 hidden sm:inline">
+                                            PSE • Tarjetas • Efectivo
+                                        </span>
+                                    </div>
+                                    <div className="relative flex-1 w-full h-full bg-white">
+                                        {!iframeLoaded && (
+                                            <div className="absolute inset-0 flex items-center justify-center bg-slate-900 text-slate-300 z-10 gap-3">
+                                                <Icon name="RefreshCw" size={24} className="animate-spin text-emerald-400" />
+                                                <span className="text-sm font-bold">Cargando pasarela oficial de PayJoy...</span>
+                                            </div>
+                                        )}
+                                        <iframe
+                                            src={paymentUrl}
+                                            onLoad={() => setIframeLoaded(true)}
+                                            className="w-full h-full min-h-[480px] border-0 bg-white"
+                                            title={`Pasarela PayJoy ${cleanTag}`}
+                                            allow="payment; clipboard-write; geolocation"
+                                        />
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-slate-500">
+                                    <div className="w-16 h-16 rounded-full bg-slate-900 flex items-center justify-center mb-4 text-slate-400">
+                                        <Icon name="CreditCard" size={32} />
+                                    </div>
+                                    <h4 className="text-lg font-black text-slate-300">No hay TAG seleccionado</h4>
+                                    <p className="text-xs text-slate-500 max-w-sm mt-1">
+                                        Escribe o pega el código o TAG del cliente en la barra superior (ej: DCPJBSZ o DXTNNZR) y haz clic en Consultar para abrir la pasarela.
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
         const API_URL_PAYJOY = 'https://script.google.com/macros/s/AKfycbzH2a6_gdBJ6uEzmms8qneHg5XnpThtWALqEjgZ9YYcEyMdG1ikYWb68POhtVELJdrdRA/exec';
 
-        const ConsultaPayJoyView = () => {
+        const ConsultaPayJoyView = ({ showToast } = {}) => {
             const [tag, setTag] = useState('');
             const [loading, setLoading] = useState(false);
             const [result, setResult] = useState(null);
             const [error, setError] = useState(null);
+            const [copied, setCopied] = useState(false);
+            const [showPaymentModal, setShowPaymentModal] = useState(false);
             const inputRef = useRef(null);
 
             useEffect(() => {
@@ -1517,33 +1923,53 @@ import './index.css';
             }, []);
 
             const handleSearch = async (e) => {
-                e.preventDefault();
-                if (!tag.trim()) return;
+                if (e && e.preventDefault) e.preventDefault();
+                const cleanTag = String(tag || '').trim().toUpperCase();
+                if (!cleanTag) return;
 
                 setLoading(true);
                 setError(null);
                 setResult(null);
 
                 try {
-                    const separator = API_URL_PAYJOY.includes('?') ? '&' : '?';
-                    const fetchUrl = `${API_URL_PAYJOY}${separator}type=actualizar_un_tag&tag=${encodeURIComponent(tag.trim().toUpperCase())}`;
-                    
-                    const response = await fetch(fetchUrl);
-                    if (!response.ok) throw new Error('Error en el servidor');
-                    
-                    const data = await response.json();
-                    
-                    if (data.error) {
-                        setError(data.error);
-                        setTag(''); 
-                    } else if (data.success) {
+                    // 1. Try local backend lookup
+                    let data = null;
+                    try {
+                        const localRes = await fetch(`/api/payjoy/lookup?tag=${encodeURIComponent(cleanTag)}`);
+                        if (localRes.ok) {
+                            const json = await localRes.json();
+                            if (json && json.success) {
+                                data = json;
+                            }
+                        }
+                    } catch (err) {}
+
+                    // 2. Fallback to Google Apps Script
+                    if (!data) {
+                        const separator = API_URL_PAYJOY.includes('?') ? '&' : '?';
+                        const fetchUrl = `${API_URL_PAYJOY}${separator}type=actualizar_un_tag&tag=${encodeURIComponent(cleanTag)}`;
+                        const response = await fetch(fetchUrl);
+                        if (!response.ok) throw new Error('Error al conectar con el servidor.');
+                        const scriptJson = await response.json();
+                        if (scriptJson.error) {
+                            setError(scriptJson.error);
+                            return;
+                        }
+                        if (scriptJson.success) {
+                            data = scriptJson;
+                        }
+                    }
+
+                    if (data) {
                         setResult(data);
-                        setTag(''); 
+                        // Trigger background sheet update
+                        const separator = API_URL_PAYJOY.includes('?') ? '&' : '?';
+                        fetch(`${API_URL_PAYJOY}${separator}type=actualizar_un_tag&tag=${encodeURIComponent(cleanTag)}`).catch(() => {});
                     } else {
-                        setError("Respuesta inesperada del servidor.");
+                        setError('No se encontró el dispositivo en PayJoy con este TAG.');
                     }
                 } catch (err) {
-                    setError("Error de red: No se pudo conectar con Apps Script.");
+                    setError('Error de red: ' + (err.message || 'No se pudo conectar'));
                 } finally {
                     setLoading(false);
                 }
@@ -1551,7 +1977,16 @@ import './index.css';
 
             const closeModal = () => {
                 setResult(null);
+                setTag('');
                 if (inputRef.current) inputRef.current.focus();
+            };
+
+            const handleCopyLink = (targetTag) => {
+                const url = `https://pay.payjoy.com/p/device/${targetTag}`;
+                navigator.clipboard.writeText(url).then(() => {
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2500);
+                });
             };
 
             return (
@@ -1562,7 +1997,7 @@ import './index.css';
                                 <Icon name="Search" size={36} className="text-white" />
                             </div>
                             <h2 className="text-3xl font-black text-white tracking-tight">Consulta PayJoy</h2>
-                            <p className="text-blue-100 text-sm mt-2 font-medium">Ingresa el TAG para auditar y sincronizar pagos en vivo.</p>
+                            <p className="text-blue-100 text-sm mt-2 font-medium">Audita cuotas en vivo, calcula fechas exactas y abre la pasarela oficial.</p>
                         </div>
 
                         <div className="p-8 bg-slate-50">
@@ -1601,23 +2036,32 @@ import './index.css';
 
                     {result && (
                         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm transition-opacity">
-                            <div className="bg-white w-full max-w-sm rounded-[2rem] shadow-2xl overflow-hidden animate-pop-in">
-                                <div className="bg-emerald-500 p-6 text-center relative">
-                                    <button onClick={closeModal} className="absolute top-4 right-4 text-white/70 hover:text-white transition-colors bg-black/10 hover:bg-black/20 rounded-full p-1">
+                            <div className="bg-white w-full max-w-md rounded-[2rem] shadow-2xl overflow-hidden animate-pop-in border border-slate-100">
+                                <div className="bg-gradient-to-r from-emerald-600 to-teal-600 p-6 text-center relative text-white">
+                                    <button onClick={closeModal} className="absolute top-4 right-4 text-white/70 hover:text-white transition-colors bg-black/10 hover:bg-black/20 rounded-full p-1.5">
                                         <Icon name="X" size={20} />
                                     </button>
-                                    <div className="w-16 h-16 bg-white rounded-full mx-auto flex items-center justify-center shadow-lg mb-3">
-                                        <Icon name="CheckCircle" size={32} className="text-emerald-500" />
+                                    <div className="w-16 h-16 bg-white/20 backdrop-blur-md rounded-2xl mx-auto flex items-center justify-center shadow-lg mb-3">
+                                        <Icon name="CheckCircle" size={32} className="text-white" />
                                     </div>
-                                    <h2 className="text-2xl font-black text-white">¡Actualizado!</h2>
-                                    <p className="text-emerald-100 text-sm mt-1 font-medium">El Excel ha sido sincronizado</p>
+                                    <h2 className="text-2xl font-black">¡Datos en Vivo!</h2>
+                                    <p className="text-emerald-100 text-xs mt-1 font-semibold">Cálculo catorcenal y desbloqueo PayJoy</p>
                                 </div>
 
-                                <div className="p-6 bg-slate-50 space-y-4">
+                                <div className="p-6 bg-slate-50 space-y-4 max-h-[75vh] overflow-y-auto custom-scrollbar">
                                     <div className="text-center bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Cliente / Titular</p>
-                                        <p className="font-black text-slate-800 text-lg leading-tight">{result.cliente}</p>
-                                        <p className="text-xs text-slate-500 font-mono mt-1 font-bold tracking-wider">TAG: {result.tag}</p>
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Cliente / Dispositivo</p>
+                                        <p className="font-black text-slate-800 text-lg leading-tight">{result.cliente || 'Titular PayJoy'}</p>
+                                        <div className="flex items-center justify-center gap-2 mt-1">
+                                            <span className="text-xs font-mono font-bold text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded-lg border border-indigo-100">
+                                                TAG: {result.tag}
+                                            </span>
+                                            {result.device && (
+                                                <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-lg">
+                                                    {result.device}
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
 
                                     <div className="grid grid-cols-2 gap-3">
@@ -1625,6 +2069,7 @@ import './index.css';
                                             <div className="absolute top-0 left-0 w-full h-1 bg-emerald-500"></div>
                                             <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mb-1 mt-1">Cuotas Pagas</p>
                                             <p className="text-4xl font-black text-emerald-600">{result.pagas}</p>
+                                            <span className="text-[9px] font-bold text-emerald-500 mt-1">Reconocidas</span>
                                         </div>
                                         
                                         <div className={`bg-white p-4 rounded-2xl border shadow-sm text-center relative overflow-hidden flex flex-col justify-center items-center ${result.mora > 0 ? 'border-rose-200' : 'border-slate-200'}`}>
@@ -1632,45 +2077,88 @@ import './index.css';
                                             <p className={`text-[10px] font-bold uppercase tracking-widest mb-1 mt-1 ${result.mora > 0 ? 'text-rose-600' : 'text-slate-400'}`}>Vencidas</p>
                                             <p className={`text-4xl font-black leading-none ${result.mora > 0 ? 'text-rose-600' : 'text-slate-700'}`}>{result.mora}</p>
                                             
-                                            {result.diasMora !== undefined && (
-                                                <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md mt-2 ${result.diasMora > 0 ? 'bg-rose-100 text-rose-700' : result.diasMora === 0 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>
-                                                    {result.diasMora > 0 ? `${result.diasMora} Días Mora` : (result.diasMora === 0 ? 'Vence Hoy' : `A favor: ${Math.abs(result.diasMora)} d`)}
+                                            {result.diasParaVencer !== undefined && result.diasParaVencer !== null ? (
+                                                <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md mt-2 ${result.diasParaVencer < 0 ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                                                    {result.diasParaVencer < 0 ? `Atraso ${Math.abs(result.diasParaVencer)} d` : (result.diasParaVencer === 0 ? 'Vence Hoy' : `Faltan ${result.diasParaVencer} d`)}
                                                 </span>
+                                            ) : (
+                                                <span className="text-[9px] text-slate-400 mt-2 font-medium">Al día</span>
                                             )}
                                         </div>
                                     </div>
 
-                                    {(result.deuda > 0 || result.cuota > 0) && (
-                                        <div className="grid grid-cols-2 gap-3">
-                                            {result.deuda > 0 && (
-                                                <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 shadow-sm text-center relative overflow-hidden">
-                                                    <div className="absolute top-0 left-0 w-full h-1 bg-blue-400"></div>
-                                                    <p className="text-[9px] font-bold text-blue-500 uppercase tracking-widest mb-1 mt-1">Saldo Restante</p>
-                                                    <p className="font-black text-blue-800 text-xl tracking-tight">{formatCurrency(result.deuda)}</p>
-                                                </div>
-                                            )}
-                                            
-                                            {result.cuota > 0 && (
-                                                <div className="bg-violet-50 p-4 rounded-2xl border border-violet-100 shadow-sm text-center relative overflow-hidden">
-                                                    <div className="absolute top-0 left-0 w-full h-1 bg-violet-400"></div>
-                                                    <p className="text-[9px] font-bold text-violet-500 uppercase tracking-widest mb-1 mt-1">Cuota Catorcenal</p>
-                                                    <p className="font-black text-violet-800 text-xl tracking-tight">{formatCurrency(result.cuota)}</p>
-                                                </div>
-                                            )}
+                                    {/* Fecha próximo pago */}
+                                    {result.fechaProximoPago && (
+                                        <div className="bg-white p-3.5 rounded-2xl border border-blue-100 shadow-sm text-center">
+                                            <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest mb-0.5">Fecha Próximo Vencimiento</p>
+                                            <p className="font-black text-slate-800 text-sm">{result.fechaProximoPago}</p>
                                         </div>
                                     )}
+
+                                    {/* Valores financieros */}
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="bg-blue-50/80 p-3.5 rounded-2xl border border-blue-100 shadow-sm text-center relative overflow-hidden">
+                                            <div className="absolute top-0 left-0 w-full h-1 bg-blue-400"></div>
+                                            <p className="text-[9px] font-bold text-blue-500 uppercase tracking-widest mb-1 mt-1">Saldo Restante</p>
+                                            <p className="font-black text-blue-900 text-lg tracking-tight">{formatCurrency(result.deuda ?? result.saldoOriginal ?? 0)}</p>
+                                        </div>
+                                        
+                                        <div className="bg-violet-50/80 p-3.5 rounded-2xl border border-violet-100 shadow-sm text-center relative overflow-hidden">
+                                            <div className="absolute top-0 left-0 w-full h-1 bg-violet-400"></div>
+                                            <p className="text-[9px] font-bold text-violet-500 uppercase tracking-widest mb-1 mt-1">Cuota Catorcenal</p>
+                                            <p className="font-black text-violet-900 text-lg tracking-tight">{formatCurrency(result.cuotaCatorcenal || result.cuota || 0)}</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Botones de acción rápida hacia el Portal PayJoy */}
+                                    <div className="space-y-2 pt-2">
+                                        <button 
+                                            onClick={() => setShowPaymentModal(true)}
+                                            className="w-full py-3.5 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white rounded-xl font-black text-sm tracking-wide shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2"
+                                        >
+                                            <Icon name="CreditCard" size={18} /> Abrir Portal de Pagos PayJoy
+                                        </button>
+
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <button 
+                                                onClick={() => handleCopyLink(result.tag)}
+                                                className="py-2.5 px-3 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors flex items-center justify-center gap-1.5 shadow-sm"
+                                            >
+                                                <Icon name={copied ? "CheckCircle" : "Copy"} size={15} className={copied ? "text-emerald-500" : "text-slate-500"} />
+                                                <span>{copied ? '¡Copiado!' : 'Copiar Link'}</span>
+                                            </button>
+
+                                            <button 
+                                                onClick={() => window.open(`https://pay.payjoy.com/p/device/${result.tag}`, '_blank', 'noopener,noreferrer')}
+                                                className="py-2.5 px-3 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors flex items-center justify-center gap-1.5 shadow-sm"
+                                            >
+                                                <Icon name="Globe" size={15} className="text-slate-500" />
+                                                <span>Abrir Pestaña</span>
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
 
-                                <div className="p-5 bg-white border-t border-slate-100">
+                                <div className="p-4 bg-white border-t border-slate-100">
                                     <button 
                                         onClick={closeModal} 
-                                        className="w-full py-4 bg-slate-800 text-white rounded-xl font-bold text-sm tracking-wide hover:bg-slate-700 hover:shadow-lg transition-all active:scale-95"
+                                        className="w-full py-3 bg-slate-800 text-white rounded-xl font-bold text-sm tracking-wide hover:bg-slate-700 transition-all active:scale-95"
                                     >
                                         Aceptar y Buscar Otro
                                     </button>
                                 </div>
                             </div>
                         </div>
+                    )}
+
+                    {showPaymentModal && result && (
+                        <PayJoyPaymentModal
+                            isOpen={showPaymentModal}
+                            onClose={() => setShowPaymentModal(false)}
+                            initialTag={result.tag}
+                            clientName={result.cliente}
+                            showToast={showToast}
+                        />
                     )}
                 </div>
             );
@@ -8000,6 +8488,7 @@ const Component = React.useMemo(() => {
         // --- COMPONENTE PRINCIPAL ---
         function TableroInnerApp(props) {
             const setActiveView = props ? props.setActiveView : null;
+            const showToast = props?.showToast || ((msg, type) => console.log(`[Toast ${type || "info"}]:`, msg));
             const [portfolio, setPortfolio] = useState('');
             const activeConfig = PORTFOLIO_CONFIG[portfolio];
 
@@ -8057,6 +8546,7 @@ const Component = React.useMemo(() => {
             // Modal Subir Excel Directo
             const [showConfigColumnasModal, setShowConfigColumnasModal] = useState(false);
             const [showExcelModal, setShowExcelModal] = useState(false);
+            const [payjoyModalData, setPayjoyModalData] = useState({ open: false, tag: '', clientName: '', row: null });
 
             const themeColors = {
                 payjoy: {
@@ -10880,6 +11370,14 @@ const Component = React.useMemo(() => {
                             
                             <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-full border border-slate-200 ml-2">
                                 <button 
+                                    onClick={() => setPayjoyModalData({ open: true, tag: '', clientName: '', row: null })} 
+                                    className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-full hover:from-blue-700 hover:to-indigo-700 transition-all shadow-sm font-bold text-sm"
+                                    title="Consultar, sincronizar y abrir portal de pagos PayJoy"
+                                >
+                                    <Icons.CreditCard className="w-4 h-4"/> Portal PayJoy
+                                </button>
+
+                                <button 
                                     onClick={() => {
                                         setManualForm(prev => ({ ...prev, financiera: portfolio || 'payjoy' }));
                                         setShowManualModal(true);
@@ -11437,6 +11935,26 @@ const Component = React.useMemo(() => {
                                                                 >
                                                                     <Icons.Handshake className="w-4 h-4"/> PAGO GESTIÓN
                                                                 </button>
+
+                                                                {(() => {
+                                                                    const rTag = getRowTag(row);
+                                                                    if (portfolio === 'payjoy' || rTag) {
+                                                                        return (
+                                                                            <button 
+                                                                                onClick={() => {
+                                                                                    const clientCol = activeConfig?.columns?.client ? findConfigColumn(activeConfig.columns.client, headers) : null;
+                                                                                    const cName = clientCol ? row[clientCol] : '';
+                                                                                    setPayjoyModalData({ open: true, tag: rTag, clientName: cName, row });
+                                                                                }}
+                                                                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold text-xs shadow-sm transition-transform hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 bg-blue-600 text-white hover:bg-blue-700"
+                                                                                title="Abrir Pasarela Oficial PayJoy & Sincronizar en Vivo"
+                                                                            >
+                                                                                <Icons.CreditCard className="w-4 h-4"/> PAGAR PAYJOY
+                                                                            </button>
+                                                                        );
+                                                                    }
+                                                                    return null;
+                                                                })()}
                                                             </div>
                                                         );
                                                     }
@@ -12199,6 +12717,41 @@ const Component = React.useMemo(() => {
                             showToast={props.showToast}
                         />
                     )}
+
+                    <PayJoyPaymentModal
+                        isOpen={payjoyModalData.open}
+                        onClose={() => setPayjoyModalData({ open: false, tag: '', clientName: '', row: null })}
+                        initialTag={payjoyModalData.tag}
+                        clientName={payjoyModalData.clientName}
+                        showToast={showToast}
+                        onSyncToBoard={(liveResult) => {
+                            if (!liveResult || !liveResult.tag) return;
+                            const cleanT = String(liveResult.tag).trim().toUpperCase();
+                            const paidCol = activeConfig?.columns?.paidQuotas ? findConfigColumn(activeConfig.columns.paidQuotas, headers) : null;
+                            const lateCol = activeConfig?.columns?.lateQuotas ? findConfigColumn(activeConfig.columns.lateQuotas, headers) : null;
+                            
+                            setData(prev => prev.map(r => {
+                                const rowTag = getRowTag(r);
+                                if (rowTag && rowTag.toUpperCase() === cleanT) {
+                                    return {
+                                        ...r,
+                                        ...(paidCol ? { [paidCol]: liveResult.pagas } : {}),
+                                        ...(lateCol ? { [lateCol]: liveResult.mora } : {})
+                                    };
+                                }
+                                return r;
+                            }));
+
+                            // Background persist to Google Sheets
+                            const sep = API_URL.includes('?') ? '&' : '?';
+                            fetch(`${API_URL}${sep}type=actualizar_un_tag&tag=${encodeURIComponent(cleanT)}`).catch(err => console.warn('Background sync error:', err));
+                            
+                            const toastFn = showToast;
+                            if (toastFn) {
+                                toastFn(`¡Sincronizado al Tablero! TAG: ${cleanT} (${liveResult.pagas} pagadas, ${liveResult.mora} mora)`, 'success');
+                            }
+                        }}
+                    />
 
                     {showExcelModal && (
                         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md p-4 animate-in fade-in duration-200">
@@ -14763,7 +15316,7 @@ return Component ? <Component {...props} /> : null;
 
                         <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-8 relative">
                             {activeView === 'consultapayjoy' ? (
-                                <ConsultaPayJoyView />
+                                <ConsultaPayJoyView showToast={showToast} />
                             ) : (
                                 <TableroView showToast={showToast} currentUser={currentUser} userPerms={userPerms} setActiveView={setActiveView} />
                             )}
