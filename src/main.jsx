@@ -14981,7 +14981,7 @@ return Component ? <Component {...props} /> : null;
                 }
 
                 const canAccessModule = (modId) => {
-                    if (modId === 'tablero' || modId === 'consultapayjoy') return true;
+                    if (modId === 'tablero' || modId === 'consultapayjoy' || modId === 'liq') return true;
                     if (isGlobalAdmin) return true;
                     return Boolean(modulosPermitidos[modId]);
                 };
@@ -15287,6 +15287,7 @@ return Component ? <Component {...props} /> : null;
                             {!isSidebarCollapsed && <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-3 mb-1 mt-2">Módulos</p>}
                             <NavItem id="tablero" icon="BarChart2" label="Tablero Cartera" />
                             <NavItem id="consultapayjoy" icon="Search" label="Consulta PayJoy" />
+                            <NavItem id="liq" icon="FileText" label="Liquidaciones" />
                         </div>
 
                         <div className="p-3 border-t border-slate-200 bg-white shrink-0">
@@ -15298,13 +15299,14 @@ return Component ? <Component {...props} /> : null;
                     </div>
 
                     <div className="md:hidden bg-white border-t border-slate-200 flex justify-around p-2 gap-2 shrink-0 z-20">
-                        <button onClick={() => setActiveView('tablero')} className={"flex-1 min-w-[90px] flex flex-col items-center justify-center p-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all " + (activeView === 'tablero' ? "bg-[#2C4C8C] text-white shadow-md" : "text-slate-500 hover:bg-slate-100")}><Icon name="BarChart2" size={18} className="mb-1"/> Tablero</button>
-                        <button onClick={() => setActiveView('consultapayjoy')} className={"flex-1 min-w-[90px] flex flex-col items-center justify-center p-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all " + (activeView === 'consultapayjoy' ? "bg-[#2C4C8C] text-white shadow-md" : "text-slate-500 hover:bg-slate-100")}><Icon name="Search" size={18} className="mb-1"/> PayJoy</button>
-                        <button onClick={handleLogout} className="flex-1 min-w-[90px] flex flex-col items-center justify-center p-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all text-rose-500 hover:bg-rose-50"><Icon name="LogOut" size={18} className="mb-1"/> Salir</button>
+                        <button onClick={() => setActiveView('tablero')} className={"flex-1 min-w-[70px] flex flex-col items-center justify-center p-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all " + (activeView === 'tablero' ? "bg-[#2C4C8C] text-white shadow-md" : "text-slate-500 hover:bg-slate-100")}><Icon name="BarChart2" size={18} className="mb-1"/> Tablero</button>
+                        <button onClick={() => setActiveView('consultapayjoy')} className={"flex-1 min-w-[70px] flex flex-col items-center justify-center p-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all " + (activeView === 'consultapayjoy' ? "bg-[#2C4C8C] text-white shadow-md" : "text-slate-500 hover:bg-slate-100")}><Icon name="Search" size={18} className="mb-1"/> PayJoy</button>
+                        <button onClick={() => setActiveView('liq')} className={"flex-1 min-w-[70px] flex flex-col items-center justify-center p-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all " + (activeView === 'liq' ? "bg-[#2C4C8C] text-white shadow-md" : "text-slate-500 hover:bg-slate-100")}><Icon name="FileText" size={18} className="mb-1"/> Liq</button>
+                        <button onClick={handleLogout} className="flex-1 min-w-[70px] flex flex-col items-center justify-center p-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all text-rose-500 hover:bg-rose-50"><Icon name="LogOut" size={18} className="mb-1"/> Salir</button>
                     </div>
 
                     <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50/50 relative">
-                        {db.notificacion && db.notificacion.activo && db.notificacion.mensaje && (activeView === 'tablero' || activeView === 'consultapayjoy') && (
+                        {db.notificacion && db.notificacion.activo && db.notificacion.mensaje && (activeView === 'tablero' || activeView === 'consultapayjoy' || activeView === 'liq') && (
                             <div className={`px-6 py-4 border-b flex items-start gap-3 ${db.notificacion.tipo === 'urgente' ? 'bg-rose-50 border-rose-200 text-rose-800' : 'bg-blue-50 border-blue-200 text-blue-800'} shrink-0 z-10`}>
                                 <Icon name="AlertTriangle" size={20} className="shrink-0 mt-0.5" />
                                 <div>
@@ -15317,6 +15319,8 @@ return Component ? <Component {...props} /> : null;
                         <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-8 relative">
                             {activeView === 'consultapayjoy' ? (
                                 <ConsultaPayJoyView showToast={showToast} />
+                            ) : activeView === 'liq' ? (
+                                <LiquidacionesView showToast={showToast} currentUser={currentUser} userPerms={userPerms} db={db} setDb={setDb} apiCall={apiCall} setActiveView={setActiveView} />
                             ) : (
                                 <TableroView showToast={showToast} currentUser={currentUser} userPerms={userPerms} setActiveView={setActiveView} />
                             )}
