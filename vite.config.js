@@ -4,6 +4,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { lookupPayjoyCustomer } from "./payjoy-service.js";
 
 export default defineConfig({
+base: '/SOLUCIONES/',
   plugins: [
     react(),
     tailwindcss(),
